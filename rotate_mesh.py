@@ -23,13 +23,19 @@ rcParams["figure.figsize"] = (16, 9)
 
 import numpy as np
 
-import pandas as pd
-
-import warnings
-
 import seaborn as sns
 
+import pandas as pd
+
+from scipy.stats import gaussian_kde
+
+import emcee
+
 from scipy.spatial import KDTree
+
+from skopt import gp_minimize
+
+import argparse
 
 
 def calculate_overhangs(
@@ -104,7 +110,7 @@ def visualize_voxels(voxel_points, overhang_voxels):
     plt.clf()
 
 
-def overhang_count(mesh, pitch, max_overhang_angle, return_voxels=False):
+def overhang_count(rotated_mesh, pitch, max_overhang_angle, return_voxels=False):
     voxelized = rotated_mesh.voxelized(pitch)
 
     voxels = voxelized.matrix
@@ -121,52 +127,117 @@ def overhang_count(mesh, pitch, max_overhang_angle, return_voxels=False):
         return overhangs
 
 
-best_rotation = None
-min_overhangs = float("inf")
-max_overhang_angle = 45
+def rotation_overhangs(angles, mesh, pitch, max_overhang_angle):
 
-# Load the STL file using trimesh
-mesh = trimesh.load_mesh("/Users/dan/Downloads/overhang_test.stl")
+    # angles *= 360.
 
-trimesh.repair.fix_normals(mesh)
+    rotated_mesh = rotate_mesh(mesh, angles)
 
-pitch = 10.0
+    return overhang_count(rotated_mesh, pitch, max_overhang_angle)
 
-overhangs_list = []
-as_ = []
-bs = []
-cs = []
 
-for a in tqdm(range(0, 360, 90)):
-    for b in range(0, 360, 10):
-        for c in range(0, 360, 10):
+def scan_rotations(mesh, pitch, max_overhang_angle):
+    overhangs_list = []
+    alphas = []
+    betas = []
+    gammas = []
 
-            as_.append(a)
-            bs.append(b)
-            cs.append(c)
+    for a in tqdm(range(0, 360, 90)):
+        for b in range(0, 360, 10):
+            for c in range(0, 360, 10):
 
-            rotated_mesh = rotate_mesh(mesh, [a, b, c])
+                alphas.append(a)
+                betas.append(b)
+                gammas.append(c)
 
-            overhangs = overhang_count(rotated_mesh, pitch, max_overhang_angle)
+                rotated_mesh = rotate_mesh(mesh, [a, b, c])
 
-            overhangs_list.append(overhangs)
+                overhangs = overhang_count(rotated_mesh, pitch, max_overhang_angle)
 
-# visualize_voxels(voxelized.points, np.array(overhang_voxels))
+                overhangs_list.append(overhangs)
 
-import pandas as pd
+    return alphas, betas, gammas, overhangs_list
 
-d = pd.DataFrame({"a": as_, "b": bs, "c": cs, "overhangs": overhangs_list})
 
-d.to_csv("overhangs.csv")
+def plot_scan_df(df):
 
-sns.barplot(x="a", y="overhangs", data=d)
-plt.savefig("a.png")
-plt.clf()
+    sns.barplot(x="a", y="overhangs", data=df)
+    plt.savefig("a.png")
+    plt.clf()
 
-sns.barplot(x="b", y="overhangs", data=d)
-plt.savefig("b.png")
-plt.clf()
+    sns.barplot(x="b", y="overhangs", data=df)
+    plt.savefig("b.png")
+    plt.clf()
 
-sns.barplot(x="c", y="overhangs", data=d)
-plt.savefig("c.png")
-plt.clf()
+    sns.barplot(x="c", y="overhangs", data=df)
+    plt.savefig("c.png")
+    plt.clf()
+
+
+def fill_scan_df(alphas, betas, gammas, overhangs_list):
+
+    df = pd.DataFrame(
+        {"a": alphas, "b": betas, "c": gammas, "overhangs": overhangs_list}
+    )
+
+    return df
+
+
+def load_mesh(file_path):
+    mesh = trimesh.load_mesh(file_path)
+    trimesh.repair.fix_normals(mesh)
+    return mesh
+
+
+def log_prob(angles, mesh, pitch, max_overhang_angle):
+    if np.any(angles < -180) or np.any(angles > 180):
+        return -np.inf
+    return rotation_overhangs(angles, mesh, pitch, max_overhang_angle)
+
+
+def main(input_file, n_calls, n_restarts, pitch, max_overhang_angle):
+
+    mesh = load_mesh(input_file)
+
+    def opt(t):
+        return -log_prob(np.array(t), mesh, pitch, max_overhang_angle)
+
+    res = gp_minimize(
+        opt,
+        [(-180, 180), (-180, 180), (-180, 180)],
+        acq_func="EI",
+        n_calls=n_calls,
+        n_random_starts=n_restarts,
+        random_state=1234,
+    )
+
+    print(res.x, res.fun)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="MCMC for 3D mesh overhang minimization."
+    )
+    parser.add_argument(
+        "--input_file", type=str, required=True, help="Path to the input mesh file."
+    )
+    parser.add_argument(
+        "--n_calls", type=int, default=100, help="Number of function calls."
+    )
+    parser.add_argument(
+        "--n_restarts", type=int, default=5, help="Number of optimisation restarts."
+    )
+    parser.add_argument("--pitch", type=float, default=10.0, help="Pitch value.")
+    parser.add_argument(
+        "--max_overhang_angle", type=float, default=45.0, help="Maximum overhang angle."
+    )
+
+    args = parser.parse_args()
+
+    main(
+        args.input_file,
+        args.n_calls,
+        args.n_restarts,
+        args.pitch,
+        args.max_overhang_angle,
+    )
