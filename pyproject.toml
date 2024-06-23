@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "mesh-tumbler"
+version = "0.1.0"
+description = "Determine mesh rotations to minimise overhangs for 3D printing"
+authors = ["Daniel O'Hanlon <dpohanlon@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "mesh_tumbler"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+numpy = "<=1.26.4"
+scipy = "^1.13.1"
+scikit-optimize = "^0.10.2"
+pandas = "<=2.1.4"
+seaborn = "^0.13.2"
+matplotlib = "^3.9.0"
+trimesh = "^4.4.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+mesh-tumbler = "mesh_tumbler.rotate_mesh:run"

@@ -1,10 +1,7 @@
 import numpy as np
-from stl import mesh
 import trimesh
 
 from tqdm import tqdm
-
-from scipy.ndimage import sobel
 
 import matplotlib as mpl
 
@@ -28,8 +25,6 @@ import seaborn as sns
 import pandas as pd
 
 from scipy.stats import gaussian_kde
-
-import emcee
 
 from scipy.spatial import KDTree
 
@@ -213,8 +208,8 @@ def main(input_file, n_calls, n_restarts, pitch, max_overhang_angle):
 
     print(res.x, res.fun)
 
+def run():
 
-if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="MCMC for 3D mesh overhang minimization."
     )
@@ -241,3 +236,6 @@ if __name__ == "__main__":
         args.pitch,
         args.max_overhang_angle,
     )
+
+if __name__ == "__main__":
+    run()
